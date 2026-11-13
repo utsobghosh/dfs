@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DFS Simulator</title>
+<style>
+:root{--bg:#f4f6f2;--card:#fff;--ink:#1d2320;--mute:#98a29b;--line:#d6dbd4;--accent:#9a2f1f;--tree:#2e9e5b;--back:#d64545;--fwd:#d98200;--cross:#3b7ddd;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171a;--card:#1e2326;--ink:#e8ece9;--mute:#6f7a80;--line:#343b40;--accent:#ff8a73}}
+:root[data-theme="dark"]{--bg:#14171a;--card:#1e2326;--ink:#e8ece9;--mute:#6f7a80;--line:#343b40;--accent:#ff8a73}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:680px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:0 0 2px}.sub{color:var(--mute);margin:0 0 14px;font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer}
+button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.start button{width:40px;padding:7px 0;font-weight:700}
+svg{width:100%;height:auto;display:block}
+.node{cursor:pointer}.node ellipse{stroke:var(--ink);stroke-width:2}
+.W ellipse{fill:var(--card)}.G ellipse{fill:#b3b8bd}.B ellipse{fill:#1b1b1b}
+.node text{fill:var(--ink);font-weight:700;text-anchor:middle;pointer-events:none}
+.G text{fill:#111}.B text{fill:#f3f3f3}.node .t{font:12px ui-monospace,Consolas,monospace;font-weight:600}
+.cur ellipse{stroke:var(--accent);stroke-width:5}
+.lbl{fill:var(--accent);font:italic 12px Georgia,serif;text-anchor:middle}
+#msg{font-size:16px;min-height:3em}
+.chip{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:1px 9px;margin:2px;font-weight:700}
+.chip:first-child{border-color:var(--accent);color:var(--accent)}
+.leg{font-size:12px;color:var(--mute)}.leg b{display:inline-block;width:18px;height:4px;vertical-align:middle;margin:0 4px 0 10px;border-radius:2px}
+.tbl{overflow-x:auto}table{border-collapse:collapse;width:100%;text-align:center;font-size:14px}
+td,th{border:1px solid var(--line);padding:4px 6px}th{font-weight:600;color:var(--mute)}
+.cW{background:var(--card)}.cG{background:#b3b8bd;color:#111}.cB{background:#1b1b1b;color:#f3f3f3}
+</style>
+</head>
+<body>
+<main>
+<h1>DFS Simulator</h1>
+<p class="sub">The graph from Lec 12. Pick a start node (or click one in the graph). Neighbours are visited in alphabetical order, as in the lecture example.</p>
+
+<div class="card row start" id="starts"><span>Start at:</span></div>
+
+<div class="card">
+<svg id="g" viewBox="0 0 600 290" role="img" aria-label="Directed graph"></svg>
+<div class="leg"><b style="background:var(--mute)"></b>not examined<b style="background:var(--tree)"></b>tree<b style="background:var(--back)"></b>back<b style="background:var(--fwd)"></b>forward<b style="background:var(--cross)"></b>cross</div>
+</div>
+
+<div class="card">
+<div class="row" style="margin-bottom:10px">
+<button id="rs">⏮ Reset</button><button id="pv">◀ Prev</button><button id="nx" class="on">Next ▶</button><button id="ap">⏵ Auto</button>
+<span id="cnt" class="leg" style="margin-left:auto"></span></div>
+<div id="msg"></div>
+</div>
+
+<div class="card"><b>Stack</b> <span class="leg">(top first)</span><div id="stk"></div></div>
+<div class="card tbl"><table id="tb"></table></div>
+</main>
+<script>
+const N={S:[135,78],D:[310,78],F:[485,78],A:[50,153],E:[400,153],B:[135,233],C:[310,233],G:[485,233]};
+const ED=[["S","D"],["S","A"],["S","C"],["A","B"],["A","C"],["B","S"],["D","C"],["D","E"],["F","D"],["F","E"],["F","G"],["E","C"],["G","C"],["C","B"]];
+const CL={n:"--mute",tree:"--tree",back:"--back",fwd:"--fwd",cross:"--cross"};
+const NAMES={W:"WHITE",G:"GRAY",B:"BLACK"};
+const KEYS=Object.keys(N).sort(),RX=38,RY=26;
+const adj={};KEYS.forEach(k=>adj[k]=[]);ED.forEach(([u,v])=>adj[u].push(v));KEYS.forEach(k=>adj[k].sort());
+const $=id=>document.getElementById(id);
+
+function simulate(start){
+  const col={},d={},f={},ek={},p={},stack=[],steps=[];let t=0;
+  KEYS.forEach(k=>col[k]="W");
+  const snap=(msg,cur,edge)=>steps.push({col:{...col},d:{...d},f:{...f},ek:{...ek},p:{...p},stack:[...stack],cur,edge,msg});
+  snap(`All vertices start WHITE with d and f unset. DFS begins at ${start}.`);
+  function visit(u){
+    col[u]="G";d[u]=++t;stack.push(u);
+    snap(`Discover ${u}: colour it GRAY, d[${u}] = ${t}. Push ${u} on the stack.`,u);
+    for(const v of adj[u]){
+      const kind=col[v]==="W"?"tree":col[v]==="G"?"back":(d[u]<d[v]?"fwd":"cross");
+      ek[u+v]=kind;
+      const why={tree:`${v} is WHITE → tree edge. Go deeper: prev[${v}] = ${u}.`,
+        back:`${v} is GRAY (still on the stack) → back edge, so the graph has a cycle. Skip it.`,
+        fwd:`${v} is already BLACK and was discovered after ${u} → forward edge. Skip it.`,
+        cross:`${v} is already BLACK and was discovered before ${u} → cross edge. Skip it.`}[kind];
+      snap(`Look at edge ${u}→${v}: ${why}`,u,u+v);
+      if(kind==="tree"){p[v]=u;visit(v);}
+    }
+    col[u]="B";f[u]=++t;stack.pop();
+    snap(`Finish ${u}: no more neighbours to try. Colour it BLACK, f[${u}] = ${t}.`+(stack.length?` Backtrack to ${stack[stack.length-1]}.`:""),u);
+  }
+  [start,...KEYS.filter(k=>k!==start)].forEach((s,i)=>{
+    if(col[s]==="W"){
+      if(i>0)snap(`The stack is empty but ${s} is still WHITE, so start a new DFS tree from ${s}.`);
+      visit(s);
+    }
+  });
+  snap("Done: every vertex is BLACK and all d | f times are final.");
+  return steps;
+}
+
+/* ---------- build static parts ---------- */
+function ep(a,b){const[x1,y1]=N[a],[x2,y2]=N[b],dx=x2-x1,dy=y2-y1,k=1/Math.sqrt((dx/RX)**2+(dy/RY)**2);return[x1+dx*k,y1+dy*k];}
+let h="<defs>"+Object.entries(CL).map(([k,c])=>`<marker id="m-${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" style="fill:var(${c})"/></marker>`).join("")+"</defs>";
+ED.forEach(([u,v])=>{const[a,b]=ep(u,v),[c,d]=ep(v,u);h+=`<line id="e-${u}${v}" x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke-linecap="round"/>`;});
+KEYS.forEach(k=>{const[x,y]=N[k];h+=`<g class="node W" id="n-${k}" data-k="${k}"><ellipse cx="${x}" cy="${y}" rx="${RX}" ry="${RY}"/><text x="${x}" y="${y-3}" font-size="17">${k}</text><text class="t" id="t-${k}" x="${x}" y="${y+14}"></text></g>`;});
+h+=`<text class="lbl" id="src">start</text>`;
+$("g").innerHTML=h;
+$("starts").insertAdjacentHTML("beforeend",KEYS.map(k=>`<button data-s="${k}">${k}</button>`).join(""));
+$("tb").innerHTML="<tr><th></th>"+KEYS.map(k=>`<th>${k}</th>`).join("")+"</tr>"+["col:colour","d:d","f:f","p:prev"].map(r=>{const[i,n]=r.split(":");return`<tr><th>${n}</th>`+KEYS.map(k=>`<td id="${i}-${k}"></td>`).join("")+"</tr>";}).join("");
+
+/* ---------- state + render ---------- */
+let start="F",steps=[],i=0,timer=null;
+function show(){
+  const s=steps[i];
+  ED.forEach(([u,v])=>{const el=$(`e-${u}${v}`),k=s.ek[u+v]||"n";
+    el.style.stroke=`var(${CL[k]})`;el.setAttribute("stroke-width",s.edge===u+v?5:2.5);
+    el.setAttribute("marker-end",`url(#m-${k})`);el.style.opacity=k==="n"?.75:1;});
+  KEYS.forEach(k=>{$("n-"+k).setAttribute("class","node "+s.col[k]+(s.cur===k?" cur":""));
+    $("t-"+k).textContent=`${s.d[k]??"–"} | ${s.f[k]??"–"}`;
+    const c=$("col-"+k);c.textContent=NAMES[s.col[k]];c.className="c"+s.col[k];
+    $("d-"+k).textContent=s.d[k]??"–";$("f-"+k).textContent=s.f[k]??"–";$("p-"+k).textContent=s.p[k]??"NIL";});
+  const[x,y]=N[start];const l=$("src");l.setAttribute("x",x);l.setAttribute("y",y-32);l.textContent="start";
+  $("msg").textContent=s.msg;
+  $("cnt").textContent=`Step ${i+1} / ${steps.length}`;
+  $("stk").innerHTML=s.stack.length?[...s.stack].reverse().map(k=>`<span class="chip">${k}</span>`).join(""):'<span class="leg">(empty)</span>';
+  $("pv").disabled=i===0;$("nx").disabled=i===steps.length-1;
+}
+function stop(){clearInterval(timer);timer=null;$("ap").textContent="⏵ Auto";}
+function setStart(k){
+  start=k;stop();steps=simulate(k);i=0;
+  document.querySelectorAll("[data-s]").forEach(b=>b.classList.toggle("on",b.dataset.s===k));
+  show();
+}
+const go=d=>{i=Math.max(0,Math.min(steps.length-1,i+d));show();if(i===steps.length-1)stop();};
+document.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>setStart(b.dataset.s));
+document.querySelectorAll(".node").forEach(n=>n.onclick=()=>setStart(n.dataset.k));
+$("nx").onclick=()=>go(1);$("pv").onclick=()=>go(-1);$("rs").onclick=()=>{stop();i=0;show();};
+$("ap").onclick=()=>{if(timer)return stop();if(i===steps.length-1)i=0;$("ap").textContent="⏸ Pause";timer=setInterval(()=>go(1),1200);show();};
+addEventListener("keydown",e=>{if(e.key==="ArrowRight")go(1);if(e.key==="ArrowLeft")go(-1);});
+setStart("F");
+</script>
+</body>
+</html>
